@@ -297,7 +297,7 @@ static void PrintNodeCounters(NestLoopState *node){
 static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 {
 	NestLoopState *node = castNode(NestLoopState, pstate);
-//	NestLoopState *substate;
+
 	NestLoop   *nl;
 	PlanState  *innerPlan;
 	PlanState  *outerPlan;
@@ -308,7 +308,8 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 	ExprContext *econtext;
 	ListCell   *lc;
 	int tmp;
-//	int tmpReward;
+	int tmpReward;
+	NestLoopState *substate;
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -360,6 +361,8 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 			if ((node->activeRelationPages >= node->sqrtOfInnerPages) ||
 					(node->isTop && node->reachedEndOfOuter)){
 				// exploit
+				if(node->level == 2)
+					elog(INFO, "level 2 exploit");
 				node->outerPage->index = 0;
 				node->isExploring = false;
 				node->exploitStepCounter = 0;
@@ -887,6 +890,13 @@ static TupleTableSlot* ExecBlockNestedLoop(PlanState *pstate)
 
 //	if(node->level != 1)
 //		node->innerPageNumber = 1;
+
+	if (node->innerTupleCounter == 0){
+		ExecReScan(outerPlan);
+		if(node->level == 1)
+			ExecReScan(innerPlan);
+	}
+
 
 	for (;;) {
 		if (node->needOuterPage) {
@@ -1484,21 +1494,21 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->endKeyValue = nlstate->startKeyValue;
 	//if (strcmp(fliporder, "on") == 0) {
 	nlstate->outerPageNumber = outerPlan(node)->plan_rows / PAGE_SIZE;
-	nlstate->innerPageNumber = innerPlan(node)->plan_rows / PAGE_SIZE + 1;
-//	if (strcmp(fliporder, "on") == 0) {
+	nlstate->innerPageNumber = innerPlan(node)->plan_rows / PAGE_SIZE;
+	if (strcmp(fliporder, "on") == 0) {
 		for(i = 0;i < nlstate->level-1;i++){
-			nlstate->innerPageNumber = (int)sqrt(substate->innerPageNumber);
+			nlstate->innerPageNumber = (int)(substate->innerPageNumber*0.9);
 		}
-//	}
+	}
 	//TODO sometimes the inner plan_rows does not match the exact row numbers 
 
 //	 elog(INFO, "Outer row number: %lf", outerPlan(node)->plan_rows);
 //	 elog(INFO, "Inner row number: %lf", innerPlan(node)->plan_rows);
 
 	nlstate->sqrtOfInnerPages = (int)sqrt(nlstate->innerPageNumber);
-//	for(i = 0;i < nlstate->level-1;i++){
-//		nlstate->sqrtOfInnerPages = (int)sqrt(substate->sqrtOfInnerPages);
-//	}
+	for(i = 0;i < nlstate->level-1;i++){
+		nlstate->sqrtOfInnerPages = (int)sqrt(substate->sqrtOfInnerPages);
+	}
 
 	nlstate->xids = palloc(nlstate->sqrtOfInnerPages * sizeof(int));	/*xiemian*/
 	nlstate->rewards = palloc(nlstate->sqrtOfInnerPages * sizeof(int));	/*xiemian*/

@@ -277,8 +277,8 @@ cost_seqscan(Path *path, PlannerInfo *root,
 		path->rows = clamp_row_est(path->rows / parallel_divisor);
 	}
 
-	path->startup_cost = startup_cost;
-	path->total_cost = startup_cost + cpu_run_cost + disk_run_cost;
+	path->startup_cost = startup_cost;	/*xiemian*/
+	path->total_cost = startup_cost + cpu_run_cost + disk_run_cost;	/*xiemian*/
 }
 
 /*
