@@ -1715,6 +1715,7 @@ typedef struct RelationPage {
 	int total;
 	int index;
 	int tupleCount;
+	int pageindex[PAGE_SIZE];
 } RelationPage;
 
 typedef struct NestLoopState
@@ -1732,6 +1733,7 @@ typedef struct NestLoopState
 	bool isTop;	/*xiemian*/
 	int level;	/*xiemian*/
 	bool fromTop; /*xiemian*/
+	bool fromBottom;
 	bool nextBlock;	/*xiemian*/
 //	int sqrtOfOuterPages;	/*xiemian*/
 //	bool blockedge; /*xiemian*/
