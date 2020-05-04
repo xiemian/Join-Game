@@ -62,10 +62,10 @@
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
-static RelationPage* CreateRelationPageOne(NestLoopState* node) {
+static RelationPage* CreateRelationPageOne(NestLoopState* node,int size) {
 	int i,j;
 	//NestLoopState *node = castNode(NestLoopState, planState);
-	int size = PAGE_SIZE;
+//	int size = PAGE_SIZE * times;
 	RelationPage* relationPage = palloc(sizeof(RelationPage));
 
 //	for(j = 0;j < node->level-1;j++){
@@ -84,7 +84,7 @@ static RelationPage* CreateRelationPageOne(NestLoopState* node) {
 static void RemoveRelationPageOne(NestLoopState* node,RelationPage** relationPageAdr) {
 	int i,j;
 	//NestLoopState *node = castNode(NestLoopState, planState);
-	int size = PAGE_SIZE;
+//	int size = PAGE_SIZE;
 	RelationPage* relationPage;
 	relationPage  = *relationPageAdr;
 	if (relationPage == NULL) {
@@ -93,7 +93,7 @@ static void RemoveRelationPageOne(NestLoopState* node,RelationPage** relationPag
 //	for(j = 0;j < node->level-1;j++){
 //		size = (int)sqrt(size);
 //	}
-	for (i = 0; i < size; i++){
+	for (i = 0; i < relationPage->total; i++){
 		if (!TupIsNull(relationPage->tuples[i])) {
 			ExecDropSingleTupleTableSlot(relationPage->tuples[i]);
 			relationPage->tuples[i] = NULL;
@@ -132,6 +132,10 @@ static int LoadNextPageOne(PlanState* planState, RelationPage* relationPage) {
 			relationPage->tuples[i] = MakeSingleTupleTableSlot(tts->tts_tupleDescriptor);
 			ExecCopySlot(relationPage->tuples[i], tts);
 			relationPage->tupleCount++;
+			if (IsA(planState, NestLoopState)) {
+				relationPage->startKeyValue[i] = castNode(NestLoopState, planState)->startKeyValue;
+//				relationPage->exploreOrNot[i] = castNode(NestLoopState, planState)->isExploring;
+			}
 		}
 	}
 	return relationPage->tupleCount;
@@ -142,6 +146,7 @@ static RelationPage* CreateRelationPage() {
 	RelationPage* relationPage = palloc(sizeof(RelationPage));
 	relationPage->index = 0;
 	relationPage->tupleCount = 0;
+	relationPage->total = PAGE_SIZE;
 	for (i = 0; i < PAGE_SIZE; i++){
 		relationPage->tuples[i] = NULL;
 	}
@@ -196,6 +201,64 @@ static int LoadNextPage(PlanState* planState, RelationPage* relationPage) {
 	return relationPage->tupleCount;
 }
 
+//static int LoadNextOuterPageOne(PlanState* outerPlan, RelationPage* relationPage, ScanKey xidScanKey, int fromIndex,int size) {
+//	int i,j=0;
+//	TupleTableSlot* tts;
+////	NestLoopState *node = castNode(NestLoopState, outerPlan);
+////	int fromXid;
+////	fromXid = fromIndex;
+//	if (relationPage == NULL){
+//		elog(ERROR, "LoadNextOuterPage: null page");
+//	}
+//	relationPage->index = 0;
+//	relationPage->tupleCount = 0;
+//	size = relationPage->total;
+//	// Remove the old stored tuples
+//	for (i = 0; i < size; i++) {
+//		if (!TupIsNull(relationPage->tuples[i])) {
+//			ExecDropSingleTupleTableSlot(relationPage->tuples[i]);
+//			relationPage->tuples[i] = NULL;
+//		}
+//	}
+//	for (i = 0; i < size; i++) {
+//		while(true){
+//			ScanKeyEntryInitialize(xidScanKey, //TODO is it fine to init ScanKey once?
+//					0, // flags
+//					1, /* attribute number to scan */
+//					3, /* op's strategy */
+//					23, /* strategy subtype */
+//					0, // ((OpExpr *) clause)->inputcollid,	/* collation */
+//					65, /* reg proc to use */
+//					fromIndex + j); /* constant */
+//			j++;
+//			if (IsA(outerPlan, IndexScanState)) {
+//				((IndexScanState*)outerPlan)->iss_NumScanKeys = 1;
+//				((IndexScanState*)outerPlan)->iss_ScanKeys = xidScanKey;
+//			} else if (IsA(outerPlan, IndexOnlyScanState)) {
+//				((IndexOnlyScanState*)outerPlan)->ioss_NumScanKeys = 1;
+//				((IndexOnlyScanState*)outerPlan)->ioss_ScanKeys = xidScanKey;
+//			} else {
+//				elog(ERROR, "Outer plan type is not index scan");
+//			}
+//			ExecReScan(outerPlan);
+//		 	tts = ExecProcNode(outerPlan);
+//			if (TupIsNull(tts)){
+//				continue;
+//	//			relationPage->tuples[i] = NULL;
+//	//			break;
+//			} else {
+//				relationPage->tuples[i] = MakeSingleTupleTableSlot(tts->tts_tupleDescriptor);
+//				ExecCopySlot(relationPage->tuples[i], tts);
+//				relationPage->tupleCount++;
+//			}
+//			break;
+//		}
+//
+//	}
+////	return relationPage->tupleCount;
+//	return j;
+//}
+
 static int LoadNextOuterPage(PlanState* outerPlan, RelationPage* relationPage, ScanKey xidScanKey, int fromIndex) {
 	int i,j=0;
 	TupleTableSlot* tts;
@@ -207,15 +270,15 @@ static int LoadNextOuterPage(PlanState* outerPlan, RelationPage* relationPage, S
 	}
 	relationPage->index = 0;
 	relationPage->tupleCount = 0;
-	relationPage->total = 0;
+	int size = relationPage->total;
 	// Remove the old stored tuples
-	for (i = 0; i < PAGE_SIZE; i++) {
+	for (i = 0; i < size; i++) {
 		if (!TupIsNull(relationPage->tuples[i])) {
 			ExecDropSingleTupleTableSlot(relationPage->tuples[i]);
 			relationPage->tuples[i] = NULL;
 		}
 	}
-	for (i = 0; i < PAGE_SIZE; i++) {
+	for (i = 0; i < size; i++) {
 		while(true){
 			ScanKeyEntryInitialize(xidScanKey, //TODO is it fine to init ScanKey once?
 					0, // flags
@@ -265,6 +328,9 @@ static int popBestPageXid(NestLoopState *node) {
 			bestPageIndex = i;
 		}
 	}
+//	if(node->level == 2)
+	elog(INFO,"node.level is %d ---best reward is %d, outter page count is %d,join tuples is %d----",
+			node->level,node->rewards[bestPageIndex],node->startKeyValue,node->generatedJoins);
 	bestXid = node->xids[bestPageIndex];
 	node->xids[bestPageIndex] = node->xids[node->activeRelationPages - 1];
 	node->rewards[bestPageIndex] = node->rewards[node->activeRelationPages - 1];
@@ -272,10 +338,23 @@ static int popBestPageXid(NestLoopState *node) {
 	return bestXid;
 }
 
+void globalRewardPass(NestLoopState *node,int key){
+	int i;
+	for (i = 0; i < node->activeRelationPages; i++) {
+		if (node->xids[i] == key){
+			node->rewards[i] += 10;	//global reward 10 passing
+			elog(INFO,"find substate respongding block, pass the global reward");
+			return;
+		}
+	}
+}
+
 static void PrintNodeInitInfo(NestLoopState *node){
+	elog(INFO, "---------------------------------------------");
 	elog(INFO, "Node Level: %d", node->level);
 	elog(INFO, "Node is Top: %d", node->isTop);
 	elog(INFO, "Node M runs: %d", node->sqrtOfInnerPages);
+	elog(INFO, "Node outer plan page size: %d", node->outerPage->total);
 	elog(INFO, "Node inner plan page size: %d", node->innerPage->total);
 	elog(INFO, "---------------------------------------------");
 
@@ -369,6 +448,9 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 //				node->lastPageIndex = MAX(node->pageIndex, node->lastPageIndex);
 				tmp = popBestPageXid(node);
 //				elog(INFO, "level %d exploit, best page start at %d",node->level,tmp);
+//				if(node->level == 2)
+//					LoadNextOuterPage(outerPlan, node->outerPage, node->xidScanKey,tmp);
+//				else
 				LoadNextOuterPage(outerPlan, node->outerPage, node->xidScanKey, tmp);
 				//elog(INFO, "Level %d Read best outer pages start from %d",node->level, tmp);
 			} else {	// explore
@@ -384,21 +466,29 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 				node->startKeyValue = node->endKeyValue;
 				//node->pageIndex++;
 				//node->pageIndex = MAX(node->pageIndex, node->lastPageIndex);
+
+//				if(node->level == 2)
+//					node->endKeyValue += LoadNextOuterPage(outerPlan, node->outerPage, node->xidScanKey, node->endKeyValue);
+//				else
 				node->endKeyValue += LoadNextOuterPage(outerPlan, node->outerPage, node->xidScanKey, node->endKeyValue);
+				//node->endKeyValue += LoadNextOuterPage(outerPlan, node->outerPage, node->xidScanKey, node->endKeyValue);
 				//elog(INFO, "Level %d Read outer pages: start from %d to %d",node->level, node->startKeyValue,node->endKeyValue);
 //				if (node->outerPage->tupleCount < PAGE_SIZE) {
 //					elog(INFO, "Reached end of outer, and the level is %d",node->level);
 //					node->reachedEndOfOuter = true;
 //					if (node->outerPage->tupleCount == 0) continue;
 //				}
-				if (node->outerPageCounter == node->outerPageNumber) {
+				if (node->outerPageCounter >= node->outerPageNumber) {
 					elog(INFO, "Reached end of outer, and the level is %d",node->level);
 					node->reachedEndOfOuter = true;
 					if (node->outerPage->tupleCount == 0) continue;
 				}
 				node->outerTupleCounter += node->outerPage->tupleCount;
 				node->lastReward = 0;
-				node->exploreStepCounter = 1;
+				if(node->level == 2)
+					node->exploreStepCounter = 1;
+				else
+					node->exploreStepCounter = 1;
 			}
 			node->needOuterPage = false;
 			node->needInnerPage = true;
@@ -432,9 +522,13 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 				node->reachedEndOfInner = false;
 			}
 			LoadNextPageOne(innerPlan, node->innerPage);
+			//****************level 2, page size is 1;
+
+//			if(LoadNextPageOne(innerPlan, node->innerPage) != PAGE_SIZE)
+//				elog(INFO,"cannot get 32 tuples per page");
 			node->innerPageCounter++;
 //			if (node->innerPage->tupleCount < node->innerPage->total) {
-			if (node->innerPageCounter == node->innerPageNumber){
+			if (node->innerPageCounter >= node->innerPageNumber){
 				node->reachedEndOfInner = true;
 				if (node->innerPage->tupleCount == 0) continue;
 			}
@@ -448,9 +542,12 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 				node->outerPage->index++;
 				node->innerPage->index = 0;
 			} else {
+				//elog(INFO,"node level is %d, last reward is %d,node reward is %d,Explore is %d, innerpageIndex is %d",
+						//node->level,node->lastReward,node->reward,node->isExploring,node->innerPageCounter);
 				node->needInnerPage = true;
 				if (node->isExploring && node->lastReward > 0
 						&& node->exploreStepCounter < node->innerPageNumber) { //stay with current
+					//elog(INFO,"node level is %d, last reward is %d",node->level,node->lastReward);
 					node->outerPage->index = 0;
 					node->reward += node->lastReward;
 					node->lastReward = 0;
@@ -463,6 +560,8 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 					//push the current explored page
 					node->xids[node->activeRelationPages] = node->startKeyValue;
 					node->rewards[node->activeRelationPages] = node->reward;
+					//elog(INFO,"node level is %d, node reward is %d",node->level,node->reward);
+					node->reward = 0;
 					node->activeRelationPages++;
 					node->needOuterPage = true;
 				} else if (!node->isExploring && node->exploitStepCounter < node->innerPageNumber) {
@@ -491,8 +590,8 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 		econtext->ecxt_outertuple = outerTupleSlot;
 
 		if (TupIsNull(outerTupleSlot)){
-			elog(INFO, "Null outer detected,explore is %d, exploit step counter %d, inner page num %d, level is %d, page counter %d, startkey %d, endkey %d, index is %d, total is %d",
-					node->isExploring,node->exploitStepCounter,node->innerPageNumber,node->level,node->outerPageCounter,node->startKeyValue,node->endKeyValue,node->outerPage->index,node->outerPage->tupleCount);
+			//elog(INFO, "Null outer detected,explore is %d, exploit step counter %d, inner page num %d, level is %d, page counter %d, startkey %d, endkey %d, index is %d, total is %d",
+			//		node->isExploring,node->exploitStepCounter,node->innerPageNumber,node->level,node->outerPageCounter,node->startKeyValue,node->endKeyValue,node->outerPage->index,node->outerPage->tupleCount);
 			if (node->activeRelationPages > 0) { // still has pages in stack
 				// elog(WARNING, "Finishing join while there are active pages");
 				node->needOuterPage = true;
@@ -510,9 +609,19 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 			if (otherqual == NULL || ExecQual(otherqual, econtext))
 			{
 				ENL1_printf("qualification succeeded, projecting tuple");
-				node->lastReward++;
+				//elog(INFO,"node level is %d, last reward is %d,node reward is %d",node->level,node->lastReward,node->reward);
+				if(node->isExploring){
+					node->lastReward++;
+					//elog(INFO,"node level is %d, last reward is %d,node reward is %d",node->level,node->lastReward,node->reward);
+				}
+				if(node->level == 2){
+					substate = castNode(NestLoopState, innerPlanState(node));
+					elog(INFO,"global reward in upper layer");
+					int key = node->innerPage->startKeyValue[node->innerPage->index];
+					globalRewardPass(substate,key);
+				}
+
 //				tmpReward = 0;
-//				substate = node;
 //				while(IsA(innerPlanState(substate), NestLoopState)){	/*xiemian*/
 //					tmpReward = tmpReward+5;
 //					substate = castNode(NestLoopState,innerPlanState(node));
@@ -902,6 +1011,8 @@ static TupleTableSlot* ExecBlockNestedLoop(PlanState *pstate)
 		if (node->needOuterPage) {
 			if(node->isTop){
 				elog(INFO,"top layer need new outer page, %d",node->outerPageCounter);
+			}else{
+				elog(INFO,"first layer need new outer page, %d",node->outerPageCounter);
 			}
 			if (node->reachedEndOfOuter){
 				if(node->isTop){
@@ -1495,11 +1606,11 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	//if (strcmp(fliporder, "on") == 0) {
 	nlstate->outerPageNumber = outerPlan(node)->plan_rows / PAGE_SIZE;
 	nlstate->innerPageNumber = innerPlan(node)->plan_rows / PAGE_SIZE;
-	if (strcmp(fliporder, "on") == 0) {
-		for(i = 0;i < nlstate->level-1;i++){
-			nlstate->innerPageNumber = (int)(substate->innerPageNumber*0.9);
-		}
-	}
+//	if (strcmp(fliporder, "on") == 0) {
+//		for(i = 0;i < nlstate->level-1;i++){
+//			nlstate->innerPageNumber = (int)(substate->innerPageNumber*0.9);
+//		}
+//	}
 	//TODO sometimes the inner plan_rows does not match the exact row numbers 
 
 //	 elog(INFO, "Outer row number: %lf", outerPlan(node)->plan_rows);
@@ -1515,18 +1626,29 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->pageIndex = -1;
 	nlstate->lastPageIndex = 0;
 	nlstate->xidScanKey = (ScanKey) palloc(sizeof(ScanKeyData));
-	nlstate->pageIdJoinIdLists = palloc(nlstate->outerPageNumber * sizeof(List*));
-	i = 0;
-	while (i < nlstate->outerPageNumber){
-		nlstate->pageIdJoinIdLists[i] = NIL;
-		i++;
+//	nlstate->pageIdJoinIdLists = palloc(nlstate->outerPageNumber * sizeof(List*));
+//	i = 0;
+//	while (i < nlstate->outerPageNumber){
+//		nlstate->pageIdJoinIdLists[i] = NIL;
+//		i++;
+//	}
+
+
+	if (strcmp(fliporder, "on") == 0){
+		if(nlstate->level == 2){
+			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+//			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+//			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+		}else {
+			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+		}
+	}else{
+		nlstate->outerPage = CreateRelationPage();
+		nlstate->innerPage = CreateRelationPage();
 	}
 
-	nlstate->outerPage = CreateRelationPage();
-	if (strcmp(fliporder, "on") == 0)
-		nlstate->innerPage = CreateRelationPageOne(nlstate);
-	else
-		nlstate->innerPage = CreateRelationPage();
 
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
@@ -1588,18 +1710,19 @@ ExecEndNestLoop(NestLoopState *node)
 
 	// Releasing memory 
 	//list_free
-	i = 0;
-	while (i < node->outerPageNumber){
-		list_free(node->pageIdJoinIdLists[i]);
-		node->pageIdJoinIdLists[i] = NULL;
-		i++;
-	}
-	RemoveRelationPage(&(node->outerPage));
+//	i = 0;
+//	while (i < node->outerPageNumber){
+//		list_free(node->pageIdJoinIdLists[i]);
+//		node->pageIdJoinIdLists[i] = NULL;
+//		i++;
+//	}
+	//RemoveRelationPage(&(node->outerPage));
+	RemoveRelationPageOne(node,&(node->outerPage));
 	RemoveRelationPageOne(node,&(node->innerPage));
 	pfree(node->xids);
 	pfree(node->rewards);
 	pfree(node->xidScanKey);
-	pfree(node->pageIdJoinIdLists);//TODO remove each entry?
+//	pfree(node->pageIdJoinIdLists);//TODO remove each entry?
 }
 
 /* ----------------------------------------------------------------
@@ -1628,11 +1751,23 @@ ExecReScanNestLoop(NestLoopState *node)
 	 */
 
 	if (strcmp(fliporder, "on") == 0) {
-		RemoveRelationPage(&(node->outerPage));
-		node->outerPage = CreateRelationPage();
-
+		RemoveRelationPageOne(node,&(node->outerPage));
 		RemoveRelationPageOne(node,&(node->innerPage));
-		node->innerPage = CreateRelationPageOne(node);
+
+		if(node->level == 2){
+//			node->innerPage = CreateRelationPageOne(node,1);
+//			node->outerPage = CreateRelationPageOne(node,2*PAGE_SIZE);
+			node->innerPage = CreateRelationPageOne(node,PAGE_SIZE);
+			node->outerPage = CreateRelationPageOne(node,PAGE_SIZE);
+		}else {
+			node->innerPage = CreateRelationPageOne(node,PAGE_SIZE);
+			node->outerPage = CreateRelationPageOne(node,PAGE_SIZE);
+		}
+
+//		node->outerPage = CreateRelationPage();
+
+//		RemoveRelationPageOne(node,&(node->innerPage));
+//		node->innerPage = CreateRelationPageOne(node);
 
 		ExecReScan(innerPlan);
 		node->innerTupleCounter = 0;
