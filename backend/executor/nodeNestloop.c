@@ -342,8 +342,8 @@ void globalRewardPass(NestLoopState *node,int key){
 	int i;
 	for (i = 0; i < node->activeRelationPages; i++) {
 		if (node->xids[i] == key){
-			node->rewards[i] += 10;	//global reward 10 passing
-			elog(INFO,"find substate respongding block, pass the global reward");
+			node->rewards[i] += 5;	//global reward 5 passing
+			elog(INFO,"find substate respongding block %d, pass the global reward",key);
 			return;
 		}
 	}
@@ -614,12 +614,11 @@ static TupleTableSlot* ExecRightBanditJoin(PlanState *pstate)
 					node->lastReward++;
 					//elog(INFO,"node level is %d, last reward is %d,node reward is %d",node->level,node->lastReward,node->reward);
 				}
-				if(node->level == 2){
-					substate = castNode(NestLoopState, innerPlanState(node));
-					elog(INFO,"global reward in upper layer");
-					int key = node->innerPage->startKeyValue[node->innerPage->index];
-					globalRewardPass(substate,key);
-				}
+//				if(node->level == 2){
+//					substate = castNode(NestLoopState, innerPlanState(node));
+//					//elog(INFO,"global reward in upper layer");
+//					globalRewardPass(substate,node->innerPage->startKeyValue[node->innerPage->index]);
+//				}
 
 //				tmpReward = 0;
 //				while(IsA(innerPlanState(substate), NestLoopState)){	/*xiemian*/
@@ -1604,8 +1603,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->startKeyValue = 1;
 	nlstate->endKeyValue = nlstate->startKeyValue;
 	//if (strcmp(fliporder, "on") == 0) {
-	nlstate->outerPageNumber = outerPlan(node)->plan_rows / PAGE_SIZE;
-	nlstate->innerPageNumber = innerPlan(node)->plan_rows / PAGE_SIZE;
+	nlstate->outerPageNumber = outerPlan(node)->plan_rows / (TIMES*PAGE_SIZE);
+	nlstate->innerPageNumber = innerPlan(node)->plan_rows / (TIMES*PAGE_SIZE);
 //	if (strcmp(fliporder, "on") == 0) {
 //		for(i = 0;i < nlstate->level-1;i++){
 //			nlstate->innerPageNumber = (int)(substate->innerPageNumber*0.9);
@@ -1617,9 +1616,9 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 //	 elog(INFO, "Inner row number: %lf", innerPlan(node)->plan_rows);
 
 	nlstate->sqrtOfInnerPages = (int)sqrt(nlstate->innerPageNumber);
-	for(i = 0;i < nlstate->level-1;i++){
-		nlstate->sqrtOfInnerPages = (int)sqrt(substate->sqrtOfInnerPages);
-	}
+//	for(i = 0;i < nlstate->level-1;i++){
+//		nlstate->sqrtOfInnerPages = (int)sqrt(substate->sqrtOfInnerPages);
+//	}
 
 	nlstate->xids = palloc(nlstate->sqrtOfInnerPages * sizeof(int));	/*xiemian*/
 	nlstate->rewards = palloc(nlstate->sqrtOfInnerPages * sizeof(int));	/*xiemian*/
@@ -1636,13 +1635,13 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 
 	if (strcmp(fliporder, "on") == 0){
 		if(nlstate->level == 2){
-			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
-			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+			nlstate->innerPage = CreateRelationPageOne(nlstate,(TIMES*PAGE_SIZE));
+			nlstate->outerPage = CreateRelationPageOne(nlstate,(TIMES*PAGE_SIZE));
 //			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
 //			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
 		}else {
-			nlstate->innerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
-			nlstate->outerPage = CreateRelationPageOne(nlstate,PAGE_SIZE);
+			nlstate->innerPage = CreateRelationPageOne(nlstate,(TIMES*PAGE_SIZE));
+			nlstate->outerPage = CreateRelationPageOne(nlstate,(TIMES*PAGE_SIZE));
 		}
 	}else{
 		nlstate->outerPage = CreateRelationPage();
@@ -1672,6 +1671,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	if (strcmp(fliporder, "on") == 0) {
 			elog(INFO, "Multi-Relation Bandit Join");
 	}
+	PrintNodeInitInfo(nlstate);
 	return nlstate;
 }
 
@@ -1687,7 +1687,7 @@ ExecEndNestLoop(NestLoopState *node)
 	int i;
 	NL1_printf("ExecEndNestLoop: %s\n",
 			   "ending node processing");
-	PrintNodeInitInfo(node);
+
 	PrintNodeCounters(node);
 	/*
 	 * Free the exprcontext
@@ -1757,11 +1757,11 @@ ExecReScanNestLoop(NestLoopState *node)
 		if(node->level == 2){
 //			node->innerPage = CreateRelationPageOne(node,1);
 //			node->outerPage = CreateRelationPageOne(node,2*PAGE_SIZE);
-			node->innerPage = CreateRelationPageOne(node,PAGE_SIZE);
-			node->outerPage = CreateRelationPageOne(node,PAGE_SIZE);
+			node->innerPage = CreateRelationPageOne(node,(TIMES*PAGE_SIZE));
+			node->outerPage = CreateRelationPageOne(node,(TIMES*PAGE_SIZE));
 		}else {
-			node->innerPage = CreateRelationPageOne(node,PAGE_SIZE);
-			node->outerPage = CreateRelationPageOne(node,PAGE_SIZE);
+			node->innerPage = CreateRelationPageOne(node,(TIMES*PAGE_SIZE));
+			node->outerPage = CreateRelationPageOne(node,(TIMES*PAGE_SIZE));
 		}
 
 //		node->outerPage = CreateRelationPage();
