@@ -1711,6 +1711,7 @@ typedef struct JoinState
 
 #define TIMES 1
 #define PAGE_SIZE 32
+#define UPJOIN_MEM 10
 typedef struct RelationPage {
 	TupleTableSlot* tuples[TIMES*PAGE_SIZE];
 	int startKeyValue[TIMES*PAGE_SIZE];
@@ -1768,6 +1769,12 @@ typedef struct NestLoopState
 	int pageIndex;
 	int lastPageIndex;
 	ScanKey xidScanKey;
+
+	RelationPage* memTuples[UPJOIN_MEM];
+	long nn; // how many rounds will run for each arm
+	long selectivity; // selectivity for 2nd join
+	bool directIntoExploit; //flag go into exploitation directly since get reward >= average reward
+	int totalReward; //accumulated rewards in exploration, be used to calculate average reward
 
 	List** pageIdJoinIdLists;
 

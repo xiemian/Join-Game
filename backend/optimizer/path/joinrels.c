@@ -780,12 +780,12 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 				mark_dummy_rel(joinrel);
 				break;
 			}
-//			add_paths_to_joinrel(root, joinrel, rel1, rel2,	/*xiemian*/
-//								 JOIN_INNER, sjinfo,
-//								 restrictlist);
-			add_paths_to_joinrel(root, joinrel, rel2, rel1,
+			add_paths_to_joinrel(root, joinrel, rel1, rel2,	/*xiemian*/
 								 JOIN_INNER, sjinfo,
 								 restrictlist);
+//			add_paths_to_joinrel(root, joinrel, rel2, rel1,
+//								 JOIN_INNER, sjinfo,
+//								 restrictlist);
 			/*
 			//if(false){
 			if((int)rel1->tuples == 150000 && (int)rel2->tuples == 600572){	//xiemian
